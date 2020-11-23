@@ -22,8 +22,9 @@ import traceback
 # -------------------------------------------- #
 # source: https://docs.python.org/2/library/sqlite3.html
 
-def initialize_database(database_filename, table_name):
+def initialize_database(database_filename, table_name, target_column_count):
     full_array_rmo_npy = convert_csv_to_data_npy(database_filename)
+    full_array_rmo_npy = downsample_data_npy(full_array_rmo_npy, target_column_count)
     initialize_table_for_img(table_name, full_array_rmo_npy)
 
 def drop_table_for_img(table_name):
@@ -93,9 +94,17 @@ def separate_data_npy_to_depth_npy_and_img_npy(full_array_rmo_npy):
     img_rmo_npy = full_array_rmo_npy[:,1:]
     return depth_index_npy, img_rmo_npy
 
-def downsample_img_npy(img_rmo_npy):
-    # TODO
-    return img_rmo_npy
+def downsample_data_npy(full_array_rmo_npy, target_column_count):
+    depth_index_npy, img_rmo_npy = separate_data_npy_to_depth_npy_and_img_npy(full_array_rmo_npy)
+    row_count = len(depth_index_npy)
+    # resample image data only
+    img_rmo_resampled_npy = [ np.interp(np.linspace(0, len(row) - 1, target_column_count), np.arange(0, len(row)), row) for row in img_rmo_npy]
+    img_rmo_resampled_npy = np.array(img_rmo_resampled_npy)
+    # reconstruct the data, which is row count x (depth column + target_column_count)
+    reconstructed_full_array_rmo_npy = np.zeros((row_count, target_column_count + 1))
+    reconstructed_full_array_rmo_npy[:,0] = depth_index_npy
+    reconstructed_full_array_rmo_npy[:,1:] = img_rmo_resampled_npy
+    return reconstructed_full_array_rmo_npy
 
 # -------------------------------------------- #
 #   Display
@@ -153,14 +162,16 @@ class HandlerChallenge(BaseHTTPRequestHandler):
             self._set_png_headers()
             self.wfile.write(generate_file_stream(image_filename))
         except:
+            traceback.print_exc()
             self._set_text_headers()
             self.wfile.write(self._html("Require query ?depth_min= &depth_max= "))
 
 DATABASE_FILE = 'img.csv'
 TABLE_NAME = 'img'
+TABLE_IMAGE_COLUMN_COUNT = 150
 
 def run(addr, port, server_class=HTTPServer, handler_class=HandlerChallenge):
-    initialize_database(DATABASE_FILE, TABLE_NAME)
+    initialize_database(DATABASE_FILE, TABLE_NAME, TABLE_IMAGE_COLUMN_COUNT)
     
     server_address = (addr, port)
     httpd = server_class(server_address, handler_class)
