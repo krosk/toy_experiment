@@ -162,7 +162,7 @@ class HandlerChallenge(BaseHTTPRequestHandler):
             self._set_png_headers()
             self.wfile.write(generate_file_stream(image_filename))
         except:
-            traceback.print_exc()
+            #traceback.print_exc()
             self._set_text_headers()
             self.wfile.write(self._html("Require query ?depth_min= &depth_max= "))
 
@@ -170,6 +170,7 @@ DATABASE_FILE = 'img.csv'
 TABLE_NAME = 'img'
 TABLE_IMAGE_COLUMN_COUNT = 150
 
+# Initialization of the server; note that the database is always re-initialized
 def run(addr, port, server_class=HTTPServer, handler_class=HandlerChallenge):
     initialize_database(DATABASE_FILE, TABLE_NAME, TABLE_IMAGE_COLUMN_COUNT)
     
