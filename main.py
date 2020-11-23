@@ -15,42 +15,46 @@ tempFolder = tempfile.gettempdir()
 
 # -------------------------------------------- #
 #   Database
-#   https://docs.python.org/2/library/sqlite3.html
 # -------------------------------------------- #
+# source: https://docs.python.org/2/library/sqlite3.html
 
-def drop_table_for_img(name):
+def initialize_database(database_filename, table_name):
+    full_array_rmo_npy = convert_csv_to_data_npy(database_filename)
+    initialize_table_for_img(table_name, full_array_rmo_npy)
+
+def drop_table_for_img(table_name):
     c = conn.cursor()
-    drop_query = f'DROP TABLE IF EXISTS {name}'
+    drop_query = f'DROP TABLE IF EXISTS {table_name}'
     c.execute(drop_query)
 
-def create_table_for_img(name, column_count):
+def create_table_for_img(table_name, column_count):
     c = conn.cursor()
     query_col = ''
     for i in range(0, column_count):
         query_col += f', col{i} real'
-    create_query = f'CREATE TABLE {name} (depth real{query_col})'
+    create_query = f'CREATE TABLE {table_name} (depth real{query_col})'
     c.execute(create_query)
 
-def insert_img_into_table(name, column_count, img_rmo_npy):
+def insert_img_into_table(table_name, column_count, img_rmo_npy):
     c = conn.cursor()
     img_rmo_tuple_list = [tuple(row) for row in img_rmo_npy]
     placeholder = '?' + ',?' * column_count
-    c.executemany(f'INSERT INTO {name} VALUES ({placeholder})', img_rmo_tuple_list)
+    c.executemany(f'INSERT INTO {table_name} VALUES ({placeholder})', img_rmo_tuple_list)
     conn.commit()
     
 
-def initialize_table_for_img(name, img_rmo_npy):
+def initialize_table_for_img(table_name, img_rmo_npy):
     column_count = img_rmo_npy.shape[1] - 1
-    drop_table_for_img(name)
-    create_table_for_img(name, column_count)
-    insert_img_into_table(name, column_count, img_rmo_npy)
+    drop_table_for_img(table_name)
+    create_table_for_img(table_name, column_count)
+    insert_img_into_table(table_name, column_count, img_rmo_npy)
 
-def query_img_and_depth_in_depth_range(name, depth_min, depth_max):
+def query_img_and_depth_in_depth_range(table_name, depth_min, depth_max):
     result_depth_list = []
     result_array_rmo_list = []
     c = conn.cursor()
     range_tuple = (depth_min, depth_max)
-    select_query = f'SELECT * from {name} WHERE depth BETWEEN ? AND ?';
+    select_query = f'SELECT * from {table_name} WHERE depth BETWEEN ? AND ?';
     for value_tuple in c.execute(select_query, range_tuple):
         if (value_tuple != None):
             value_list = list(value_tuple)
@@ -63,7 +67,7 @@ def query_img_and_depth_in_depth_range(name, depth_min, depth_max):
 # -------------------------------------------- #
 
 def convert_csv_to_data_npy(csv_file):
-    # https://numpy.org/doc/stable/reference/generated/numpy.genfromtxt.html
+    # source: https://numpy.org/doc/stable/reference/generated/numpy.genfromtxt.html
     full_array_rmo_npy = np.genfromtxt(csv_file, delimiter=',', skip_header=1, skip_footer=1) 
     # INCOMPLETE: cheating because last line data is known beforehand to be invalid, one should do proper data validation by cleaning it
     return full_array_rmo_npy
@@ -94,15 +98,16 @@ def generate_plot_for_img(depth_list, img_rmo_list):
     plt.imshow(image_npy, cmap=colormap,  aspect='auto', vmin=ref_vmin, vmax=ref_vmax, extent=[x_min, x_max, 0, column_count])
     plt.tight_layout()
     fn = os.path.join(tempFolder,'plot_' + str(np.random.randint(10000)) + '.png')
-    print(fn)
     plt.savefig(fn)
-    plt.show()
-    plt.close()
-    return
+    #plt.show()
+    #plt.close()
+    return fn
+
 
 # -------------------------------------------- #
-#   Server code
+#   Server code & API entry point
 # -------------------------------------------- #
+# source: https://gist.github.com/bradmontgomery/2219997
 
 class HandlerChallenge(BaseHTTPRequestHandler):
     def _set_headers(self):
@@ -125,12 +130,14 @@ class HandlerChallenge(BaseHTTPRequestHandler):
         self._set_headers()
         self.wfile.write(self._html("post"))
 
+DATABASE_FILE = 'img.csv'
+TABLE_NAME = 'img'
+
 def run(addr, port, server_class=HTTPServer, handler_class=HandlerChallenge):
+    initialize_database(DATABASE_FILE, TABLE_NAME)
+
     server_address = (addr, port)
     httpd = server_class(server_address, handler_class)
-
-    full_array_rmo_npy = convert_csv_to_data_npy('img.csv')
-    initialize_table_for_img('img', full_array_rmo_npy)
     
     depth_list, img_rmo_list = query_img_and_depth_in_depth_range('img', 9100, 9200)
     generate_plot_for_img(depth_list, img_rmo_list)
