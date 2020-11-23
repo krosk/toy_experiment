@@ -38,12 +38,19 @@ def initialize_table_for_img(name, img_rmo_npy):
     create_table_for_img(name, column_count)
     insert_img_into_table(name, column_count, img_rmo_npy)
 
-def query_img_in_range(name, depth_min, depth_max):
+def query_img_and_depth_in_depth_range(name, depth_min, depth_max):
+    result_depth_list = []
+    result_array_rmo_list = []
     c = conn.cursor()
     range_tuple = (depth_min, depth_max)
     select_query = f'SELECT * from {name} WHERE depth BETWEEN ? AND ?';
     for row in c.execute(select_query, range_tuple):
-        print(c.fetchone())
+        value_tuple = c.fetchone()
+        if (value_tuple != None):
+            value_list = list(value_tuple)
+            result_depth_list.append(value_list[0])
+            result_array_rmo_list.append(value_list[1:-1])
+    return result_depth_list, result_array_rmo_list
 
 # -------------------------------------------- #
 #   Application
@@ -96,7 +103,7 @@ def run(addr, port, server_class=HTTPServer, handler_class=HandlerChallenge):
     full_array_rmo_npy = convert_csv_to_data_npy('img.csv')
     initialize_table_for_img('img', full_array_rmo_npy)
     
-    query_img_in_range('img', 9100, 9200)
+    depth_list, img_rmo_list = query_img_and_depth_in_depth_range('img', 9100, 9200))
 
     print(f"Starting httpd server on {addr}:{port}")
     httpd.serve_forever()
