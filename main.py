@@ -2,7 +2,60 @@ import os
 import argparse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-PORT = 8000
+import numpy as np
+import sqlite3
+conn = sqlite3.connect('challenge.db')
+
+# -------------------------------------------- #
+#   Database
+# -------------------------------------------- #
+
+def drop_table_for_img(name):
+    c = conn.cursor()
+    drop_query = f'DROP TABLE IF EXISTS {name}'
+    c.execute(drop_query)
+
+def create_table_for_img(name, column_count):
+    c = conn.cursor()
+    query_col = ''
+    for i in range(0, column_count):
+        query_col += f', col{i} real'
+    create_query = f'CREATE TABLE {name} (depth real{query_col})'
+    c.execute(create_query)
+
+def insert_img_into_table(name, column_count, img_rmo_npy):
+    c = conn.cursor()
+    img_rmo_tuple_list = [tuple(row) for row in img_rmo_npy]
+    placeholder = '?' + ',?' * column_count
+    c.executemany(f'INSERT INTO {name} VALUES ({placeholder})', img_rmo_tuple_list)
+
+def initialize_table_for_img(name, column_count, img_rmo_npy):
+    drop_table_for_img(name)
+    create_table_for_img(name, column_count)
+    insert_img_into_table(name, column_count, img_rmo_npy)
+
+# -------------------------------------------- #
+#   Application
+# -------------------------------------------- #
+
+def convert_csv_to_data_npy(csv_file):
+    # https://numpy.org/doc/stable/reference/generated/numpy.genfromtxt.html
+    full_array_rmo_npy = np.genfromtxt(csv_file, delimiter=',', skip_header=1, skip_footer=1) 
+    # INCOMPLETE: cheating because last line data is known beforehand to be invalid, one should do proper data validation by cleaning it
+    return full_array_rmo_npy
+
+def separate_data_npy_to_depth_npy_and_img_npy(full_array_rmo_npy):
+    depth_index_npy = full_array_rmo_npy[:,0]
+    img_rmo_npy = full_array_rmo_npy[:,1:]
+    return depth_index_npy, img_rmo_npy
+
+def downsample_img_npy(img_rmo_npy):
+    # TODO
+    return img_rmo_npy
+
+# -------------------------------------------- #
+#   Server code
+# -------------------------------------------- #
 
 class HandlerChallenge(BaseHTTPRequestHandler):
     def _set_headers(self):
@@ -25,10 +78,12 @@ class HandlerChallenge(BaseHTTPRequestHandler):
         self._set_headers()
         self.wfile.write(self._html("post"))
 
-
 def run(addr, port, server_class=HTTPServer, handler_class=HandlerChallenge):
     server_address = (addr, port)
     httpd = server_class(server_address, handler_class)
+
+    full_array_rmo_npy = convert_csv_to_data_npy('img.csv')
+    initialize_table_for_img('img', 200, full_array_rmo_npy)
 
     print(f"Starting httpd server on {addr}:{port}")
     httpd.serve_forever()
