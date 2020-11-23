@@ -2,6 +2,8 @@ import os
 import argparse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+from urllib.parse import urlparse
+
 import numpy as np
 import sqlite3
 conn = sqlite3.connect('challenge.db')
@@ -12,6 +14,8 @@ import matplotlib.colors as colors
 
 import tempfile
 tempFolder = tempfile.gettempdir()
+
+import traceback
 
 # -------------------------------------------- #
 #   Database
@@ -62,6 +66,18 @@ def query_img_and_depth_in_depth_range(table_name, depth_min, depth_max):
             result_array_rmo_list.append(value_list[1:])
     return result_depth_list, result_array_rmo_list
 
+def get_depth_min_max_from_query(path):
+    # source: https://stackoverflow.com/questions/8928730/processing-http-get-input-parameter-on-server-side-in-python
+    query = urlparse(path).query
+    query_components_list = query.split("&")
+    query_components = {}
+    for query_component in query_components_list:
+        query_key_value = query_component.split('=')
+        query_components[query_key_value[0]] = query_key_value[1]
+    depth_min = float(query_components['depth_min'])
+    depth_max = float(query_components['depth_max'])
+    return depth_min, depth_max
+
 # -------------------------------------------- #
 #   Application
 # -------------------------------------------- #
@@ -103,6 +119,11 @@ def generate_plot_for_img(depth_list, img_rmo_list):
     #plt.close()
     return fn
 
+def generate_file_stream(image_filename):
+    file = open(image_filename, "rb")
+    file_stream = file.read()
+    file.close()
+    return file_stream
 
 # -------------------------------------------- #
 #   Server code & API entry point
@@ -110,7 +131,12 @@ def generate_plot_for_img(depth_list, img_rmo_list):
 # source: https://gist.github.com/bradmontgomery/2219997
 
 class HandlerChallenge(BaseHTTPRequestHandler):
-    def _set_headers(self):
+    def _set_png_headers(self):
+        self.send_response(200)
+        self.send_header("Content-type", "image/png")
+        self.end_headers()
+
+    def _set_text_headers(self):
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
@@ -120,28 +146,25 @@ class HandlerChallenge(BaseHTTPRequestHandler):
         return content.encode("utf8")
 
     def do_GET(self):
-        self._set_headers()
-        self.wfile.write(self._html("get"))
-
-    def do_HEAD(self):
-        self._set_headers()
-
-    def do_POST(self):
-        self._set_headers()
-        self.wfile.write(self._html("post"))
+        try:
+            depth_min, depth_max = get_depth_min_max_from_query(self.path)
+            depth_list, img_rmo_list = query_img_and_depth_in_depth_range(TABLE_NAME, depth_min, depth_max)
+            image_filename = generate_plot_for_img(depth_list, img_rmo_list)
+            self._set_png_headers()
+            self.wfile.write(generate_file_stream(image_filename))
+        except:
+            self._set_text_headers()
+            self.wfile.write(self._html("Require query ?depth_min= &depth_max= "))
 
 DATABASE_FILE = 'img.csv'
 TABLE_NAME = 'img'
 
 def run(addr, port, server_class=HTTPServer, handler_class=HandlerChallenge):
     initialize_database(DATABASE_FILE, TABLE_NAME)
-
+    
     server_address = (addr, port)
     httpd = server_class(server_address, handler_class)
     
-    depth_list, img_rmo_list = query_img_and_depth_in_depth_range('img', 9100, 9200)
-    generate_plot_for_img(depth_list, img_rmo_list)
-
     print(f"Starting httpd server on {addr}:{port}")
     httpd.serve_forever()
 
