@@ -6,6 +6,13 @@ import numpy as np
 import sqlite3
 conn = sqlite3.connect('challenge.db')
 
+from matplotlib import cm
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+
+import tempfile
+tempFolder = tempfile.gettempdir()
+
 # -------------------------------------------- #
 #   Database
 #   https://docs.python.org/2/library/sqlite3.html
@@ -48,7 +55,7 @@ def query_img_and_depth_in_depth_range(name, depth_min, depth_max):
         if (value_tuple != None):
             value_list = list(value_tuple)
             result_depth_list.append(value_list[0])
-            result_array_rmo_list.append(value_list[1:-1])
+            result_array_rmo_list.append(value_list[1:])
     return result_depth_list, result_array_rmo_list
 
 # -------------------------------------------- #
@@ -69,6 +76,29 @@ def separate_data_npy_to_depth_npy_and_img_npy(full_array_rmo_npy):
 def downsample_img_npy(img_rmo_npy):
     # TODO
     return img_rmo_npy
+
+# -------------------------------------------- #
+#   Display
+# -------------------------------------------- #
+
+def generate_plot_for_img(depth_list, img_rmo_list):
+    row_count = len(depth_list)
+    image_npy = np.transpose(np.reshape(img_rmo_list, (row_count, -1)))
+    column_count = image_npy.shape[0]
+    fig = plt.figure(figsize=(18, 8))
+    colormap = cm.get_cmap('YlOrBr')
+    ref_vmin = np.nanmin(image_npy)
+    ref_vmax = np.nanmax(image_npy)
+    x_min = depth_list[0]
+    x_max = depth_list[-1]
+    plt.imshow(image_npy, cmap=colormap,  aspect='auto', vmin=ref_vmin, vmax=ref_vmax, extent=[x_min, x_max, 0, column_count])
+    plt.tight_layout()
+    fn = os.path.join(tempFolder,'plot_' + str(np.random.randint(10000)) + '.png')
+    print(fn)
+    plt.savefig(fn)
+    plt.show()
+    plt.close()
+    return
 
 # -------------------------------------------- #
 #   Server code
@@ -102,7 +132,8 @@ def run(addr, port, server_class=HTTPServer, handler_class=HandlerChallenge):
     full_array_rmo_npy = convert_csv_to_data_npy('img.csv')
     initialize_table_for_img('img', full_array_rmo_npy)
     
-    depth_list, img_rmo_list = query_img_and_depth_in_depth_range('img', 8000, 11000)
+    depth_list, img_rmo_list = query_img_and_depth_in_depth_range('img', 9100, 9200)
+    generate_plot_for_img(depth_list, img_rmo_list)
 
     print(f"Starting httpd server on {addr}:{port}")
     httpd.serve_forever()
